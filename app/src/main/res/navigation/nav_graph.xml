@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/nav_section1">
+
+    <fragment
+        android:id="@+id/nav_section1"
+        android:name="com.example.kitrinostheos.Section1Fragment"
+        android:label="Allaboutaris - Μόνο Άρης" />
+    <fragment
+        android:id="@+id/nav_section2"
+        android:name="com.example.kitrinostheos.Section2Fragment"
+        android:label="Allaboutaris (full)" />
+    <fragment
+        android:id="@+id/nav_section3"
+        android:name="com.example.kitrinostheos.Section3Fragment"
+        android:label="Pressaris" />
+    <fragment
+        android:id="@+id/nav_section4"
+        android:name="com.example.kitrinostheos.Section4Fragment"
+        android:label="Gazzetta" />
+    <fragment
+        android:id="@+id/nav_section5"
+        android:name="com.example.kitrinostheos.Section5Fragment"
+        android:label="Yellow Radio" />
+    <fragment
+        android:id="@+id/nav_section6"
+        android:name="com.example.kitrinostheos.Section6Fragment"
+        android:label="F1 Gazzetta" />
+    <fragment
+        android:id="@+id/nav_section7"
+        android:name="com.example.kitrinostheos.Section7Fragment"
+        android:label="F1 Sport24" />
+    <fragment
+        android:id="@+id/nav_section8"
+        android:name="com.example.kitrinostheos.Section8Fragment"
+        android:label="F1 Automotonews" />
+    <fragment
+        android:id="@+id/nav_section9"
+        android:name="com.example.kitrinostheos.Section9Fragment"
+        android:label="F1 Totalracing" />
+    <fragment
+        android:id="@+id/nav_section10"
+        android:name="com.example.kitrinostheos.Section10Fragment"
+        android:label="F1 Skysports" />
+    <fragment
+        android:id="@+id/nav_section11"
+        android:name="com.example.kitrinostheos.Section11Fragment"
+        android:label="News 247" />
+    <fragment
+        android:id="@+id/nav_section12"
+        android:name="com.example.kitrinostheos.Section12Fragment"
+        android:label="Tv program" />
+    <fragment
+        android:id="@+id/nav_section13"
+        android:name="com.example.kitrinostheos.Section13Fragment"
+        android:label="Βαθμολογίες Ποδοσφαίρου" />
+    <fragment
+        android:id="@+id/nav_section14"
+        android:name="com.example.kitrinostheos.Section14Fragment"
+        android:label="Βαθμολογίες Μπάσκετ" />
+    <fragment
+        android:id="@+id/nav_section15"
+        android:name="com.example.kitrinostheos.Section15Fragment"
+        android:label="Emperor Forum" />
+    <fragment
+        android:id="@+id/nav_section16"
+        android:name="com.example.kitrinostheos.Section16Fragment"
+        android:label="Allaboutaris TV" />
+    <fragment
+        android:id="@+id/nav_section17"
+        android:name="com.example.kitrinostheos.Section17Fragment"
+        android:label="Yellow TV" />
+    <fragment
+        android:id="@+id/nav_section18"
+        android:name="com.example.kitrinostheos.Section18Fragment"
+        android:label="Yellow Radio" />
+    <fragment
+        android:id="@+id/nav_section19"
+        android:name="com.example.kitrinostheos.Section19Fragment"
+        android:label="Aris Media Factory" />
+    <fragment
+        android:id="@+id/nav_section20"
+        android:name="com.example.kitrinostheos.Section20Fragment"
+        android:label="Super 3 TV" />
+</navigation>
+
+

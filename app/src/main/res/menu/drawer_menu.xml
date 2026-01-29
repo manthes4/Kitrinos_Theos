@@ -1,0 +1,65 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_section1"
+            android:visible="true"
+            android:title="Allaboutaris - Μόνο Άρης" />
+        <item
+            android:id="@+id/nav_section2"
+            android:title="Allaboutaris (full)" />
+        <item
+            android:id="@+id/nav_section3"
+            android:title="Pressaris" />
+        <item
+            android:id="@+id/nav_section4"
+            android:title="Gazzetta" />
+        <item
+            android:id="@+id/nav_section5"
+            android:title="Yellow Radio" />
+        <item
+            android:id="@+id/nav_section6"
+            android:title="F1 Gazzetta" />
+        <item
+            android:id="@+id/nav_section7"
+            android:title="F1 Sport24" />
+        <item
+            android:id="@+id/nav_section8"
+            android:title="F1 Automotonews" />
+        <item
+            android:id="@+id/nav_section9"
+            android:title="F1 Totalracing" />
+        <item
+            android:id="@+id/nav_section10"
+            android:title="F1 Skysports" />
+        <item
+            android:id="@+id/nav_section11"
+            android:title="News 247" />
+        <item
+            android:id="@+id/nav_section12"
+            android:title="Tv program" />
+        <item
+            android:id="@+id/nav_section13"
+            android:title="Βαθμολογίες Ποδοσφαίρου" />
+        <item
+            android:id="@+id/nav_section14"
+            android:title="Βαθμολογίες Μπάσκετ" />
+        <item
+            android:id="@+id/nav_section15"
+            android:title="Emperor Forum" />
+        <item
+            android:id="@+id/nav_section16"
+            android:title="Allaboutaris TV" />
+        <item
+            android:id="@+id/nav_section17"
+            android:title="Yellow TV" />
+        <item
+            android:id="@+id/nav_section19"
+            android:title="Aris Media Factory" />
+        <item
+            android:id="@+id/nav_section20"
+            android:title="Super 3 TV" />
+        <item
+            android:id="@+id/nav_section18"
+            android:title="Yellow Radio" />
+    </group>
+</menu>
