@@ -25,29 +25,6 @@ class Section1Fragment : Fragment(), WebViewReloadable {
     private lateinit var progressBar: ProgressBar
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
-    // Ad URL patterns for blocking network requests
-    private val adUrlPatterns = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "adservice.google.com",
-        "adclick.g.doubleclick.net",
-        "ads.yahoo.com",
-        "pagead2.googlesyndication.com",
-        "googletagservices.com",
-        "adzerk.net",
-        "pubmatic.com",
-        "rubiconproject.com",
-        "openx.com",
-        "adnxs.com",
-        "criteo.com",
-        "amazon-adsystem.com",
-        "facebook.com/tr/",
-        "taboola.com",
-        "outbrain.com",
-        "adsbygoogle.js"
-    )
-    private val adUrlRegex = Regex(adUrlPatterns.joinToString("|") { Regex.escape(it) })
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -63,8 +40,8 @@ class Section1Fragment : Fragment(), WebViewReloadable {
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true // Required for mutation observer
         webSettings.domStorageEnabled = true
-        webSettings.cacheMode = if (isNetworkFast()) WebSettings.LOAD_DEFAULT else WebSettings.LOAD_CACHE_ELSE_NETWORK
-        webSettings.loadsImagesAutomatically = isNetworkFast()
+        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK // Χρήση cache αν υπάρχει, αλλιώς δίκτυο
+        webSettings.loadsImagesAutomatically = true // Μην περιμένεις το τέλος της σελίδας για τις εικόνες
         webSettings.javaScriptCanOpenWindowsAutomatically = false
         webSettings.builtInZoomControls = true
         webSettings.displayZoomControls = false
@@ -80,76 +57,29 @@ class Section1Fragment : Fragment(), WebViewReloadable {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 progressBar.visibility = View.VISIBLE
-                swipeRefreshLayout.isRefreshing = false
-                Log.d("WebView", "Started loading: $url at ${System.currentTimeMillis()}")
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 swipeRefreshLayout.isRefreshing = false
-                // Enable images after page load
-                view?.settings?.loadsImagesAutomatically = true
-                // Lazy load images, remove ad containers, and collapse empty parents
-                view?.evaluateJavascript(
-                    """
+
+                // Ελαφρύ script: Μόνο κρύψιμο, όχι MutationObserver (που τρώει CPU)
+                val cleanScript = """
                     (function() {
-                        // Lazy load images
-                        var images = document.getElementsByTagName('img');
-                        for (var i = 0; i < images.length; i++) {
-                            if (images[i].hasAttribute('data-src')) {
-                                images[i].setAttribute('src', images[i].getAttribute('data-src'));
-                                images[i].removeAttribute('data-src');
-                            }
-                        }
-                        // Define ad selectors
-                        var adSelectors = [
-                            'ins.adsbygoogle',
-                            '.ad, .advert, .ad-container, .ad-slot, .ad-unit, .ad-block, .ad-banner, .adsbygoogle',
-                            '[data-ad-client]', // Google Ads
-                            '[data-ad-slot]',   // Google Ads
-                            '.g-ad, .google-ad, .google_ads, .ad-wrapper',
-                            'div[id*="banner"], div[class*="banner"]', // Common banner containers
-                            'iframe[src*="googleads"], iframe[src*="doubleclick"], iframe[src*="ads"]',
-                            '.ad-leaderboard, .ad-rectangle, .ad-skyscraper' // Additional ad formats
-                        ].join(',');
-                        // Remove ad elements and log for debugging
-                        var adElements = document.querySelectorAll(adSelectors);
-                        adElements.forEach(function(el) {
-                            console.log('Removing ad element: ' + (el.id || el.className || el.tagName));
-                            el.parentNode.removeChild(el);
-                        });
-                        // Collapse empty parent containers
                         var style = document.createElement('style');
-                        style.innerHTML = `
-                            .ad-container:empty, .ad-slot:empty, .ad-unit:empty, .ad-block:empty, 
-                            .ad-banner:empty, .adsbygoogle:empty, .ad-wrapper:empty,
-                            .ad-leaderboard:empty, .ad-rectangle:empty, .ad-skyscraper:empty {
-                                display: none !important;
-                            }
-                        `;
+                        style.innerHTML = '.ad, .advert, .ad-container, .adsbygoogle, #at-cv-lightbox-button-holder { display: none !important; }';
                         document.head.appendChild(style);
-                        // Mutation observer for dynamically loaded ads
-                        var observer = new MutationObserver(function(mutations) {
-                            mutations.forEach(function(mutation) {
-                                mutation.addedNodes.forEach(function(node) {
-                                    if (node.nodeType === 1) { // Element nodes only
-                                        if (node.matches(adSelectors) || node.querySelector(adSelectors)) {
-                                            console.log('Dynamic ad removed: ' + (node.id || node.className || node.tagName));
-                                            node.remove();
-                                        }
-                                    }
-                                });
-                            });
+                        
+                        // Lazy load images αν υπάρχουν ακόμα
+                        var images = document.querySelectorAll('img[data-src]');
+                        images.forEach(img => {
+                            img.src = img.getAttribute('data-src');
+                            img.removeAttribute('data-src');
                         });
-                        // Observe the entire body (adjust to specific container if known)
-                        var contentContainer = document.body || document;
-                        observer.observe(contentContainer, { childList: true, subtree: true });
                     })();
-                    """.trimIndent(),
-                    null
-                )
-                Log.d("WebView", "Finished loading: $url at ${System.currentTimeMillis()}")
+                """.trimIndent()
+                view?.evaluateJavascript(cleanScript, null)
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -158,20 +88,23 @@ class Section1Fragment : Fragment(), WebViewReloadable {
             }
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                if (request != null) {
-                    val url = request.url.toString()
-                    if (adUrlRegex.containsMatchIn(url) || (url.endsWith(".js") && "ads" in url)) {
-                        Log.d("WebView", "Blocked ad URL: $url")
+                val url = request?.url?.toString() ?: return null
+
+                // Ταχύτατος έλεγχος χωρίς Regex
+                for (keyword in adKeywords) {
+                    if (url.contains(keyword)) {
                         return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
                     }
                 }
                 return super.shouldInterceptRequest(view, request)
             }
 
-            // Handle subpage navigation for SPA or AJAX
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                view?.loadUrl(request?.url.toString())
-                return true // Handle navigation in WebView
+                val url = request?.url.toString()
+                if (url.startsWith("http")) {
+                    view?.loadUrl(url)
+                }
+                return true
             }
         }
 
@@ -215,9 +148,11 @@ class Section1Fragment : Fragment(), WebViewReloadable {
         return rootView
     }
 
-    private fun isAdUrl(url: String): Boolean {
-        return adUrlRegex.containsMatchIn(url)
-    }
+    // Κράτα μόνο τα απολύτως απαραίτητα patterns
+    private val adKeywords = listOf(
+        "googleads", "doubleclick", "pagead", "googlesyndication",
+        "adservice", "taboola", "outbrain", "facebook.com/tr/"
+    )
 
     private fun isNetworkFast(): Boolean {
         val cm = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
