@@ -1,23 +1,15 @@
 package com.example.kitrinostheos
 
-import android.content.Context
-import android.net.ConnectivityManager
+import android.app.Dialog
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.view.WindowManager
+import android.webkit.*
 import android.widget.ProgressBar
 import androidx.fragment.app.Fragment
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import java.io.ByteArrayInputStream
 
 class Section16Fragment : Fragment(), WebViewReloadable {
 
@@ -25,28 +17,9 @@ class Section16Fragment : Fragment(), WebViewReloadable {
     private lateinit var progressBar: ProgressBar
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
-    // Ad URL patterns for blocking network requests
-    private val adUrlPatterns = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "adservice.google.com",
-        "adclick.g.doubleclick.net",
-        "ads.yahoo.com",
-        "pagead2.googlesyndication.com",
-        "googletagservices.com",
-        "adzerk.net",
-        "pubmatic.com",
-        "rubiconproject.com",
-        "openx.com",
-        "adnxs.com",
-        "criteo.com",
-        "amazon-adsystem.com",
-        "facebook.com/tr/",
-        "taboola.com",
-        "outbrain.com",
-        "adsbygoogle.js"
-    )
-    private val adUrlRegex = Regex(adUrlPatterns.joinToString("|") { Regex.escape(it) })
+    // User Agents
+    private val mobileUA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    private val desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -54,168 +27,137 @@ class Section16Fragment : Fragment(), WebViewReloadable {
     ): View? {
         val rootView = inflater.inflate(R.layout.fragment_webview, container, false)
 
-        // Initialize views
         webView = rootView.findViewById(R.id.webView)
         progressBar = rootView.findViewById(R.id.progressBar)
         swipeRefreshLayout = rootView.findViewById(R.id.swipeRefreshLayout)
 
-        // WebView settings
+        // 1. Βασικές Ρυθμίσεις (ΠΡΕΠΕΙ ΝΑ ΥΠΑΡΧΟΥΝ ΓΙΑ ΝΑ ΦΟΡΤΩΣΕΙ)
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.mediaPlaybackRequiresUserGesture = false
-        webSettings.useWideViewPort = true
+        webSettings.databaseEnabled = true
+        webSettings.setSupportMultipleWindows(true)
+        webSettings.javaScriptCanOpenWindowsAutomatically = true
+
+        // Προαιρετικό: Αν το chat φαίνεται πολύ μικρό, ανέβασε το scale
+        webSettings.useWideViewPort = false
         webSettings.loadWithOverviewMode = true
-        webView.setInitialScale(0)
-        webSettings.textZoom = 100
-        webSettings.builtInZoomControls = true
-        webSettings.displayZoomControls = false
-        webSettings.setSupportZoom(true)
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.setInitialScale(150) // Αυτό θα δώσει το "διπλάσιο" πλάτος που ζητάς
+        webSettings.textZoom = 115 // Δοκίμασε από 130 έως 150 για να βρεις αυτό που σε βολεύει
+        // Χρησιμοποιούμε Mobile UA στην αρχή για να είναι σίγουρο το Login
+        webSettings.userAgentString = mobileUA
 
-        // Set mobile user-agent
-        webSettings.userAgentString =
-            "Mozilla/5.0 (Linux; Android 10; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Mobile Safari/537.36"
+        // Cookies
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-        // WebViewClient for handling page loading and ad blocking
+        // 2. Διαχείριση Login Popup
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {
+                val newWebView = WebView(requireContext())
+                newWebView.settings.javaScriptEnabled = true
+                newWebView.settings.domStorageEnabled = true
+                newWebView.settings.userAgentString = mobileUA // Mobile για το Login
+
+                val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+                dialog.setContentView(newWebView)
+                dialog.show()
+
+                newWebView.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView?) {
+                        dialog.dismiss()
+                        webView.reload()
+                    }
+                }
+
+                newWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        return false // Αφήνουμε τη Google να κάνει τα redirects της
+                    }
+                }
+
+                val transport = resultMsg?.obj as WebView.WebViewTransport
+                transport.webView = newWebView
+                resultMsg.sendToTarget()
+                return true
+            }
+        }
+
+        // 3. WebViewClient για την κεντρική σελίδα
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
                 progressBar.visibility = View.VISIBLE
-                swipeRefreshLayout.isRefreshing = false
-                Log.d("WebView", "Started loading: $url at ${System.currentTimeMillis()}")
+
+                if (url != null) {
+                    // ΜΟΝΟ αν πάμε σε σελίδα Google Login γυρνάμε σε Mobile
+                    if (url.contains("accounts.google.com") || url.contains("ServiceLogin")) {
+                        if (webView.settings.userAgentString != mobileUA) {
+                            webView.settings.userAgentString = mobileUA
+                            view?.reload() // Reload με το σωστό UA για να μην φάμε άκυρο από τη Google
+                        }
+                    } else if (url.contains("youtube.com")) {
+                        if (webView.settings.userAgentString != desktopUA) {
+                            webView.settings.userAgentString = desktopUA
+                        }
+                    }
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 swipeRefreshLayout.isRefreshing = false
-                // Enable images after page load
-                view?.settings?.loadsImagesAutomatically = true
-                // Lazy load images, remove ad containers, and collapse empty parents
-                view?.evaluateJavascript(
-                    """
-                    (function() {
-                        // Lazy load images
-                        var images = document.getElementsByTagName('img');
-                        for (var i = 0; i < images.length; i++) {
-                            if (images[i].hasAttribute('data-src')) {
-                                images[i].setAttribute('src', images[i].getAttribute('data-src'));
-                                images[i].removeAttribute('data-src');
-                            }
-                        }
-                        // Define ad selectors
-                        var adSelectors = [
-                            'ins.adsbygoogle',
-                            '.ad, .advert, .ad-container, .ad-slot, .ad-unit, .ad-block, .ad-banner, .adsbygoogle',
-                            '[data-ad-client]', // Google Ads
-                            '[data-ad-slot]',   // Google Ads
-                            '.g-ad, .google-ad, .google_ads, .ad-wrapper',
-                            'div[id*="banner"], div[class*="banner"]', // Common banner containers
-                            'iframe[src*="googleads"], iframe[src*="doubleclick"], iframe[src*="ads"]',
-                            '.ad-leaderboard, .ad-rectangle, .ad-skyscraper' // Additional ad formats
-                        ].join(',');
-                        // Remove ad elements and log for debugging
-                        var adElements = document.querySelectorAll(adSelectors);
-                        adElements.forEach(function(el) {
-                            console.log('Removing ad element: ' + (el.id || el.className || el.tagName));
-                            el.parentNode.removeChild(el);
-                        });
-                        // Collapse empty parent containers
-                        var style = document.createElement('style');
-                        style.innerHTML = `
-                            .ad-container:empty, .ad-slot:empty, .ad-unit:empty, .ad-block:empty, 
-                            .ad-banner:empty, .adsbygoogle:empty, .ad-wrapper:empty,
-                            .ad-leaderboard:empty, .ad-rectangle:empty, .ad-skyscraper:empty {
-                                display: none !important;
-                            }
-                        `;
-                        document.head.appendChild(style);
-                        // Mutation observer for dynamically loaded ads
-                        var observer = new MutationObserver(function(mutations) {
-                            mutations.forEach(function(mutation) {
-                                mutation.addedNodes.forEach(function(node) {
-                                    if (node.nodeType === 1) { // Element nodes only
-                                        if (node.matches(adSelectors) || node.querySelector(adSelectors)) {
-                                            console.log('Dynamic ad removed: ' + (node.id || node.className || node.tagName));
-                                            node.remove();
-                                        }
-                                    }
-                                });
-                            });
-                        });
-                        // Observe the entire body (adjust to specific container if known)
-                        var contentContainer = document.body || document;
-                        observer.observe(contentContainer, { childList: true, subtree: true });
-                    })();
-                    """.trimIndent(),
-                    null
-                )
-                Log.d("WebView", "Finished loading: $url at ${System.currentTimeMillis()}")
-            }
 
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                super.onReceivedError(view, request, error)
-                Log.e("WebView", "Error loading: ${error?.description}")
-            }
+                if (url?.contains("youtube.com") == true) {
+                    val script = """
+            (function() {
+                var style = document.createElement('style');
+                style.innerHTML = `
+                    /* 1. Βασικά */
+                    #masthead-container, #header-wide, #guide { display: none !important; }
 
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                if (request != null) {
-                    val url = request.url.toString()
-                    if (adUrlRegex.containsMatchIn(url) || (url.endsWith(".js") && "ads" in url)) {
-                        Log.d("WebView", "Blocked ad URL: $url")
-                        return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                    /* 2. ΑΥΤΟΜΑΤΟ WRAPPING & ΥΨΟΣ (Η Λύση) */
+                    /* Λέμε σε ΟΛΑ τα στοιχεία που περιέχουν κείμενο να μην κόβουν ΠΟΤΕ τίποτα */
+                    #video-title, 
+                    #metadata-line, 
+                    ytd-video-meta-block,
+                    .style-scope.ytd-rich-grid-media {
+                        white-space: normal !important;      /* Επιτρέπει στο κείμενο να αλλάζει σειρά */
+                        display: block !important;           /* Σπάει τον περιορισμό της ίδιας γραμμής */
+                        max-height: none !important;         /* Καταργεί το όριο ύψους */
+                        height: auto !important;             /* Το ύψος ορίζεται από το κείμενο */
+                        overflow: visible !important;        /* Δείχνει ό,τι περισσεύει */
+                        -webkit-line-clamp: unset !important;/* Απενεργοποιεί το "κόψιμο" μετά από 2 γραμμές */
                     }
+
+                    /* 3. ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΑ ΓΡΑΜΜΑΤΑ ΠΟΥ ΚΡΕΜΟΝΤΑΙ */
+                    #video-title {
+                        line-height: 1.5em !important;       /* Δίνει αέρα ανάμεσα στις γραμμές */
+                        padding-bottom: 10px !important;     /* Χώρος για g, y, p, q */
+                        margin-bottom: 5px !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                window.dispatchEvent(new Event('resize'));
+            })();
+        """.trimIndent()
+                    view?.evaluateJavascript(script, null)
                 }
-                return super.shouldInterceptRequest(view, request)
             }
 
-            // Handle subpage navigation for SPA or AJAX
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                view?.loadUrl(request?.url.toString())
-                return true // Handle navigation in WebView
+                return false
             }
         }
 
-        // Setup SwipeRefreshLayout
-        swipeRefreshLayout.setOnRefreshListener {
-            webView.reload()
-        }
+        swipeRefreshLayout.setOnRefreshListener { webView.reload() }
 
-        // Enable swipe only at the top
-        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
-            swipeRefreshLayout.isEnabled = scrollY == 0
-        }
+        // Φόρτωση του URL
+        webView.loadUrl("https://www.youtube.com/@AllAboutARISTV/streams")
 
-        swipeRefreshLayout.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val y = event.rawY
-                val screenHeight = resources.displayMetrics.heightPixels
-                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35f
-            }
-            false
-        }
-
-        // Load the initial URL
-        webView.loadUrl("https://www.youtube.com/@AllAboutARISTV/streams/")
         return rootView
     }
 
-    private fun isAdUrl(url: String): Boolean {
-        return adUrlRegex.containsMatchIn(url)
-    }
-
-    private fun isNetworkFast(): Boolean {
-        val cm = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val networkInfo = cm.activeNetworkInfo
-        return networkInfo != null && networkInfo.isConnected && networkInfo.type == ConnectivityManager.TYPE_WIFI
-    }
-
-    override fun reloadWebView() {
-        webView.reload()
-    }
-
-    override fun getWebView(): WebView {
-        return webView
-    }
+    override fun reloadWebView() = webView.reload()
+    override fun getWebView(): WebView = webView
 }

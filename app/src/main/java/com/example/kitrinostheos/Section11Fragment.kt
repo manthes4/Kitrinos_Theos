@@ -22,16 +22,10 @@ class Section11Fragment : Fragment(), WebViewReloadable {
     private lateinit var progressBar: ProgressBar
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
-    // Define patterns or URLs to block (e.g., common ad networks)
-    private val adUrlPatterns = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "adservice.google.com",
-        "adclick.g.doubleclick.net",
-        "ads.yahoo.com",
-        "pagead2.googlesyndication.com", // Added common ad domain
-        "googletagservices.com", // Another common one
-        "adzerk.net" // Add more as needed
+    private val adKeywords = listOf(
+        "googleads", "doubleclick", "pagead", "googlesyndication",
+        "adservice", "taboola", "outbrain", "facebook.com/tr/", "adsbygoogle",
+        "pabidding", "cleverpush", "smartadserver", "crashlytics", "glomex", "smartadserver"
     )
 
     override fun onCreateView(
@@ -44,96 +38,149 @@ class Section11Fragment : Fragment(), WebViewReloadable {
         progressBar = rootView.findViewById(R.id.progressBar)
         swipeRefreshLayout = rootView.findViewById(R.id.swipeRefreshLayout)
 
-        // WebView settings
-        // WebView settings
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        // Remove or comment out the following line as setAppCacheEnabled is deprecated
-        // webSettings.setAppCacheEnabled(true)
-        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webSettings.javaScriptCanOpenWindowsAutomatically = false
-        webSettings.loadsImagesAutomatically = true // Can be adjusted based on user preference or page content
+        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        webSettings.loadsImagesAutomatically = true
 
-        // Enable zoom controls and gestures
-        webSettings.builtInZoomControls = true  // Show zoom buttons
-        webSettings.displayZoomControls = false // Hide default zoom controls (optional)
-        webSettings.setSupportZoom(true)        // ✅ Correct
+        // Απενεργοποιημένο για να μην ξεχειλώνει
+        webSettings.useWideViewPort = false
+        webSettings.loadWithOverviewMode = true
+        webSettings.javaScriptCanOpenWindowsAutomatically = true
+        webSettings.setSupportMultipleWindows(true)
 
-        // Enable hardware acceleration
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        // WebViewClient for managing loading
+        // 1. Ενεργοποιεί το swipe μόνο αν το WebView είναι στο πάνω μέρος
+        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            swipeRefreshLayout.isEnabled = scrollY == 0
+        }
+
+        // 2. Περιορίζει το swipe μόνο στο πάνω 35% της οθόνης
+        swipeRefreshLayout.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val y = event.rawY
+                val screenHeight = resources.displayMetrics.heightPixels
+                // Ελέγχει αν το WebView είναι στο 0 και το δάκτυλο είναι ψηλά
+                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.5f
+            }
+            false
+        }
+
         webView.webViewClient = object : WebViewClient() {
+
+            // Inject τη στιγμή που εμφανίζεται το περιεχόμενο
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                applyCleanScript(view)
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 progressBar.visibility = View.VISIBLE
-                swipeRefreshLayout.isRefreshing = false
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 swipeRefreshLayout.isRefreshing = false
-                // Lazy load images if they have 'data-src' attribute
-                view?.evaluateJavascript("javascript:(function() { var images = document.getElementsByTagName('img'); for (var i = 0; i < images.length; i++) { if (images[i].hasAttribute('data-src')) { images[i].setAttribute('src', images[i].getAttribute('data-src')); images[i].removeAttribute('data-src'); } } })();", null)
-            }
 
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                super.onReceivedError(view, request, error)
-                // Handle error, perhaps show a custom error page or a retry mechanism
+                // Τρέχουμε το καθάρισμα
+                applyCleanScript(view)
             }
 
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                if (request != null && isAdUrl(request.url.toString()) && request.isForMainFrame.not()) {
-                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("".toByteArray()))
+                val url = request?.url?.toString() ?: return null
+                for (keyword in adKeywords) {
+                    if (url.contains(keyword)) {
+                        return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                    }
                 }
                 return super.shouldInterceptRequest(view, request)
             }
-        }
 
-        // Setup SwipeRefreshLayout
-        swipeRefreshLayout.setOnRefreshListener {
-            webView.reload()
-        }
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val url = request?.url.toString()
 
-        // Enable/Disable swipe based on scroll position and touch location
-        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
-            swipeRefreshLayout.isEnabled = scrollY == 0
-        }
-
-        swipeRefreshLayout.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val y = event.rawY
-                val screenHeight = resources.displayMetrics.heightPixels
-                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35
+                // Επιτρέπουμε στο WebView να χειριστεί μόνο του τη ροή
+                // Αν επιστρέψουμε false, το WebView αναλαμβάνει να φορτώσει τη σελίδα κανονικά
+                return false
             }
-            false
         }
 
-        // Preload critical resources
-        webView.loadUrl("javascript:(function() { document.write('<link rel=\"preload\" href=\"your-critical-resource.css\" as=\"style\">'); })();")
-
-        // DNS Prefetching
-        webView.loadUrl("javascript:(function() { var link = document.createElement('link'); link.rel = 'dns-prefetch'; link.href = 'www.news247.gr'; document.head.appendChild(link); })();")
-
-        // Load the initial URL
+        swipeRefreshLayout.setOnRefreshListener { webView.reload() }
         webView.loadUrl("https://www.news247.gr/")
         return rootView
     }
 
-    // Check if the URL matches known ad patterns
-    private fun isAdUrl(url: String): Boolean {
-        return adUrlPatterns.any { url.contains(it) }
+    private fun applyCleanScript(view: WebView?) {
+        val cleanScript = """
+    (function() {
+        var style = document.getElementById('clean-style') || document.createElement('style');
+        style.id = 'clean-style';
+        document.head.appendChild(style);
+        
+        style.innerHTML = `
+            /* 1. Μηδενισμός γνωστών selectors */
+            .advertisement, .advertising-label, .ad-label, 
+            div[id*="div-gpt-ad"], [class*="ad-slot"], .ad-impact {
+                display: none !important;
+                height: 0 !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                visibility: hidden !important;
+            }
+        `;
+
+        var cleanInArticleAds = function() {
+            // 2. Στοχεύουμε τα στοιχεία ΜΕΣΑ στο άρθρο
+            var article = document.querySelector('article, .article-body, .main-content');
+            if (!article) return;
+
+            // Ψάχνουμε όλα τα div και section μέσα στο κείμενο
+            var children = article.querySelectorAll('div, section, aside');
+            children.forEach(function(el) {
+                var text = el.innerText ? el.innerText.toUpperCase().trim() : "";
+                
+                // Αν το στοιχείο γράφει ADVERTISEMENT ή ΔΙΑΦΗΜΙΣΗ
+                if (text === 'ADVERTISEMENT' || text === 'ΔΙΑΦΗΜΙΣΗ') {
+                    // Εξαφανίζουμε το ίδιο το στοιχείο
+                    el.style.setProperty('display', 'none', 'important');
+                    el.style.setProperty('height', '0', 'important');
+
+                    // Ανεβαίνουμε 1-2 επίπεδα για να βρούμε το "κουτί" της διαφήμισης
+                    var parent = el.parentElement;
+                    if (parent && parent !== article) {
+                        parent.style.setProperty('display', 'none', 'important');
+                        parent.style.setProperty('height', '0', 'important');
+                        parent.style.setProperty('margin', '0', 'important');
+                    }
+                }
+                
+                // 3. Εξαφάνιση κενών πλαισίων που πιάνουν χώρο ανάμεσα σε παραγράφους
+                if (el.offsetHeight > 50 && (el.id.includes('ad') || el.className.includes('ad'))) {
+                     el.style.display = 'none';
+                }
+            });
+        };
+
+        // Εκτέλεση σε κύματα
+        cleanInArticleAds();
+        setTimeout(cleanInArticleAds, 1000);
+        setTimeout(cleanInArticleAds, 3000);
+        
+        // Καθάρισμα κατά το σκρολάρισμα
+        window.addEventListener('scroll', cleanInArticleAds);
+    })();
+""".trimIndent()
+        view?.evaluateJavascript(cleanScript, null)
     }
 
-    // Implement the reloadWebView method
-    override fun reloadWebView() {
-        webView.reload()
-    }
-
-    // Implement the getWebView method
-    override fun getWebView(): WebView {
-        return webView
-    }
+    override fun reloadWebView() = webView.reload()
+    override fun getWebView(): WebView = webView
 }

@@ -1,5 +1,6 @@
 package com.example.kitrinostheos
 
+import android.app.Dialog
 import android.content.Context
 import android.net.ConnectivityManager
 import android.os.Build
@@ -28,102 +29,136 @@ class Section17Fragment : Fragment(), WebViewReloadable {
     private lateinit var progressBar: ProgressBar
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
+    // User Agents
+    private val mobileUA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+    private val desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
         val rootView = inflater.inflate(R.layout.fragment_webview, container, false)
 
-        // Initialize views
         webView = rootView.findViewById(R.id.webView)
         progressBar = rootView.findViewById(R.id.progressBar)
         swipeRefreshLayout = rootView.findViewById(R.id.swipeRefreshLayout)
 
-        // WebView settings
+        // 1. Βασικές Ρυθμίσεις (ΠΡΕΠΕΙ ΝΑ ΥΠΑΡΧΟΥΝ ΓΙΑ ΝΑ ΦΟΡΤΩΣΕΙ)
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.mediaPlaybackRequiresUserGesture = false
+        webSettings.databaseEnabled = true
+        webSettings.setSupportMultipleWindows(true)
+        webSettings.javaScriptCanOpenWindowsAutomatically = true
         webSettings.useWideViewPort = true
         webSettings.loadWithOverviewMode = true
-        webView.setInitialScale(0)
-        webSettings.textZoom = 100
-        webSettings.builtInZoomControls = true
-        webSettings.displayZoomControls = false
-        webSettings.setSupportZoom(true)
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        // Προαιρετικό: Αν το chat φαίνεται πολύ μικρό, ανέβασε το scale
+        webView.setInitialScale(100)
 
-        // Set mobile user-agent
-        webSettings.userAgentString =
-            "Mozilla/5.0 (Linux; Android 10; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Mobile Safari/537.36"
+        // Χρησιμοποιούμε Mobile UA στην αρχή για να είναι σίγουρο το Login
+        webSettings.userAgentString = mobileUA
 
-        // Allow mixed content (HTTP + HTTPS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            webSettings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        // Cookies
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+        // 2. Διαχείριση Login Popup
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean {
+                val newWebView = WebView(requireContext())
+                newWebView.settings.javaScriptEnabled = true
+                newWebView.settings.domStorageEnabled = true
+                newWebView.settings.userAgentString = mobileUA // Mobile για το Login
+
+                val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+                dialog.setContentView(newWebView)
+                dialog.show()
+
+                newWebView.webChromeClient = object : WebChromeClient() {
+                    override fun onCloseWindow(window: WebView?) {
+                        dialog.dismiss()
+                        webView.reload()
+                    }
+                }
+
+                newWebView.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        return false // Αφήνουμε τη Google να κάνει τα redirects της
+                    }
+                }
+
+                val transport = resultMsg?.obj as WebView.WebViewTransport
+                transport.webView = newWebView
+                resultMsg.sendToTarget()
+                return true
+            }
         }
 
-        // WebChromeClient required for audio/video
-        webView.webChromeClient = WebChromeClient()
-
-        // WebViewClient to handle page loading
+        // 3. WebViewClient για την κεντρική σελίδα
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
                 progressBar.visibility = View.VISIBLE
-                swipeRefreshLayout.isRefreshing = false
-                Log.d("WebView", "Started loading: $url")
+
+                if (url != null) {
+                    // ΜΟΝΟ αν πάμε σε σελίδα Google Login γυρνάμε σε Mobile
+                    if (url.contains("accounts.google.com") || url.contains("ServiceLogin")) {
+                        if (webView.settings.userAgentString != mobileUA) {
+                            webView.settings.userAgentString = mobileUA
+                            view?.reload() // Reload με το σωστό UA για να μην φάμε άκυρο από τη Google
+                        }
+                    } else if (url.contains("youtube.com")) {
+                        if (webView.settings.userAgentString != desktopUA) {
+                            webView.settings.userAgentString = desktopUA
+                        }
+                    }
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
                 progressBar.visibility = View.GONE
                 swipeRefreshLayout.isRefreshing = false
-                view?.settings?.loadsImagesAutomatically = true
-                Log.d("WebView", "Finished loading: $url")
+
+                if (url?.contains("youtube.com") == true) {
+                    val script = """
+                        (function() {
+                            // Δίνουμε λίγο χρόνο στο YouTube να φορτώσει το chat frame
+                            setTimeout(function() {
+                                var style = document.createElement('style');
+                                style.innerHTML = `
+                                    #masthead-container, #header-wide { display: none !important; }
+                                    ytd-live-chat-frame { 
+                                        display: block !important; 
+                                        height: 600px !important; 
+                                        visibility: visible !important;
+                                    }
+                                    iron-collapse { display: block !important; }
+                                `;
+                                document.head.appendChild(style);
+                                
+                                // Force click στο κουμπί "Show Chat" αν είναι κλειστό
+                                var chatButton = document.querySelector('button[aria-label="Show chat"]');
+                                if (chatButton) chatButton.click();
+                            }, 2000);
+                        })();
+                    """.trimIndent()
+                    view?.evaluateJavascript(script, null)
+                }
             }
 
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                super.onReceivedError(view, request, error)
-                Log.e("WebView", "Error loading: ${error?.description}")
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                return false
             }
         }
 
-        // SwipeRefreshLayout setup
-        swipeRefreshLayout.setOnRefreshListener {
-            webView.reload()
-        }
+        swipeRefreshLayout.setOnRefreshListener { webView.reload() }
 
-        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
-            swipeRefreshLayout.isEnabled = scrollY == 0
-        }
-
-        swipeRefreshLayout.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_DOWN) {
-                val y = event.rawY
-                val screenHeight = resources.displayMetrics.heightPixels
-                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35f
-            }
-            false
-        }
-
-        // Load radio URL
+        // Φόρτωση του URL
         webView.loadUrl("https://www.youtube.com/@YellowRadioFM/streams")
 
         return rootView
     }
 
-    private fun isNetworkFast(): Boolean {
-        val cm = requireContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val networkInfo = cm.activeNetworkInfo
-        return networkInfo != null && networkInfo.isConnected && networkInfo.type == ConnectivityManager.TYPE_WIFI
-    }
-
-    override fun reloadWebView() {
-        webView.reload()
-    }
-
-    override fun getWebView(): WebView {
-        return webView
-    }
+    override fun reloadWebView() = webView.reload()
+    override fun getWebView(): WebView = webView
 }

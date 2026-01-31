@@ -22,16 +22,9 @@ class Section3Fragment : Fragment(), WebViewReloadable {
     private lateinit var progressBar: ProgressBar
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
-    // Define patterns or URLs to block (e.g., common ad networks)
-    private val adUrlPatterns = listOf(
-        "doubleclick.net",
-        "googlesyndication.com",
-        "adservice.google.com",
-        "adclick.g.doubleclick.net",
-        "ads.yahoo.com",
-        "pagead2.googlesyndication.com", // Added common ad domain
-        "googletagservices.com", // Another common one
-        "adzerk.net" // Add more as needed
+    private val adKeywords = listOf(
+        "googleads", "doubleclick", "pagead", "googlesyndication",
+        "adservice", "taboola", "outbrain", "facebook.com/tr/", "adsbygoogle"
     )
 
     override fun onCreateView(
@@ -44,66 +37,23 @@ class Section3Fragment : Fragment(), WebViewReloadable {
         progressBar = rootView.findViewById(R.id.progressBar)
         swipeRefreshLayout = rootView.findViewById(R.id.swipeRefreshLayout)
 
-        // WebView settings
-        // WebView settings
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        // Remove or comment out the following line as setAppCacheEnabled is deprecated
-        // webSettings.setAppCacheEnabled(true)
-        webSettings.cacheMode = WebSettings.LOAD_NO_CACHE
-        webSettings.javaScriptCanOpenWindowsAutomatically = false
-        webSettings.loadsImagesAutomatically = true // Can be adjusted based on user preference or page content
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+        webSettings.loadsImagesAutomatically = true
 
-        // Enable zoom controls and gestures
-        webSettings.builtInZoomControls = true  // Show zoom buttons
-        webSettings.displayZoomControls = false // Hide default zoom controls (optional)
-        webSettings.setSupportZoom(true)        // ✅ Correct
+        // ΕΠΑΝΑΦΟΡΑ ΡΥΘΜΙΣΕΩΝ ΠΟΥ ΔΟΥΛΕΥΑΝ ΣΤΟ SKY SPORTS
+        webSettings.builtInZoomControls = true
+        webSettings.displayZoomControls = false
+        webSettings.setSupportZoom(true)
 
-        // ✅ Scale WebView to 120%
-        webView.setInitialScale(140)
-        webSettings.textZoom = 150  // Adjust text zoom scale
-        webSettings.useWideViewPort = false
+        webSettings.useWideViewPort = true // Το Sky Sports το χρειάζεται true
         webSettings.loadWithOverviewMode = true
 
-        // Enable hardware acceleration
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 
-        // WebViewClient for managing loading
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                progressBar.visibility = View.VISIBLE
-                swipeRefreshLayout.isRefreshing = false
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar.visibility = View.GONE
-                swipeRefreshLayout.isRefreshing = false
-                // Lazy load images if they have 'data-src' attribute
-                view?.evaluateJavascript("javascript:(function() { var images = document.getElementsByTagName('img'); for (var i = 0; i < images.length; i++) { if (images[i].hasAttribute('data-src')) { images[i].setAttribute('src', images[i].getAttribute('data-src')); images[i].removeAttribute('data-src'); } } })();", null)
-            }
-
-            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                super.onReceivedError(view, request, error)
-                // Handle error, perhaps show a custom error page or a retry mechanism
-            }
-
-            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                if (request != null && isAdUrl(request.url.toString()) && request.isForMainFrame.not()) {
-                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream("".toByteArray()))
-                }
-                return super.shouldInterceptRequest(view, request)
-            }
-        }
-
-        // Setup SwipeRefreshLayout
-        swipeRefreshLayout.setOnRefreshListener {
-            webView.reload()
-        }
-
-        // Enable/Disable swipe based on scroll position and touch location
+        // Listeners για Scroll και Touch
         webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             swipeRefreshLayout.isEnabled = scrollY == 0
         }
@@ -112,34 +62,93 @@ class Section3Fragment : Fragment(), WebViewReloadable {
             if (event.action == MotionEvent.ACTION_DOWN) {
                 val y = event.rawY
                 val screenHeight = resources.displayMetrics.heightPixels
-                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35
+                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35f
             }
             false
         }
 
-        // Preload critical resources
-        webView.loadUrl("javascript:(function() { document.write('<link rel=\"preload\" href=\"your-critical-resource.css\" as=\"style\">'); })();")
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                super.onPageCommitVisible(view, url)
+                applyCleanScript(view)
+            }
 
-        // DNS Prefetching
-        webView.loadUrl("javascript:(function() { var link = document.createElement('link'); link.rel = 'dns-prefetch'; link.href = 'https://www.pressaris.gr/'; document.head.appendChild(link); })();")
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                progressBar.visibility = View.VISIBLE
+            }
 
-        // Load the initial URL
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                progressBar.visibility = View.GONE
+                swipeRefreshLayout.isRefreshing = false
+
+                // ΕΠΑΝΑΦΟΡΑ LAZY LOAD (Από τον παλιό κώδικα)
+                view?.evaluateJavascript("javascript:(function() { var images = document.getElementsByTagName('img'); for (var i = 0; i < images.length; i++) { if (images[i].hasAttribute('data-src')) { images[i].setAttribute('src', images[i].getAttribute('data-src')); images[i].removeAttribute('data-src'); } } })();", null)
+
+                applyCleanScript(view)
+            }
+
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return null
+                for (keyword in adKeywords) {
+                    if (url.contains(keyword)) {
+                        return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream("".toByteArray()))
+                    }
+                }
+                return super.shouldInterceptRequest(view, request)
+            }
+        }
+
+        swipeRefreshLayout.setOnRefreshListener { webView.reload() }
         webView.loadUrl("https://www.pressaris.gr/")
         return rootView
     }
 
-    // Check if the URL matches known ad patterns
-    private fun isAdUrl(url: String): Boolean {
-        return adUrlPatterns.any { url.contains(it) }
+    private fun applyCleanScript(view: WebView?) {
+        val cleanScript = """
+    (function() {
+        // 1. Προσθήκη CSS Styles
+        var style = document.getElementById('clean-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'clean-style';
+            document.head.appendChild(style);
+        }
+        style.innerHTML = `
+            /* Ο κώδικας που δούλεψε */
+            .adsbygoogle, .advertisement, .ad-container, .at-above-post,
+            .top-banner-area, .mg_box, div[class*="td-a-ad"], .td-header-ad-wrap { 
+                display: none !important; 
+                height: 0 !important; 
+                margin: 0 !important; 
+                padding: 0 !important;
+            }
+            .td-header-menu-wrap-menu { margin-bottom: 0 !important; }
+            .td-main-content-wrap, .td-container-wrap { padding-top: 0 !important; margin-top: 0 !important; }
+            .tdc-row [class*="tdi_"] .td-element-style { display: none !important; }
+
+            /* Διόρθωση πλάτους */
+            body, html { overflow-x: hidden !important; width: 100% !important; }
+        `;
+
+        // 2. Το "Επιθετικό μάζεμα" που έκανε τη διαφορά
+        var allDivs = document.querySelectorAll('div');
+        allDivs.forEach(function(div) {
+            if (div.className && typeof div.className === 'string' && div.className.includes('ad')) {
+                // Αν το div είναι ψηλό και περιέχει τη λέξη ad, το εξαφανίζουμε
+                if (div.offsetHeight > 10) {
+                    div.style.display = 'none';
+                    div.style.height = '0';
+                    div.style.margin = '0';
+                }
+            }
+        });
+    })();
+""".trimIndent()
+        view?.evaluateJavascript(cleanScript, null)
     }
 
-    // Implement the reloadWebView method
-    override fun reloadWebView() {
-        webView.reload()
-    }
-
-    // Implement the getWebView method
-    override fun getWebView(): WebView {
-        return webView
-    }
+    override fun reloadWebView() = webView.reload()
+    override fun getWebView(): WebView = webView
 }

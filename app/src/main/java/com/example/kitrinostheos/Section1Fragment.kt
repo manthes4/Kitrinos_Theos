@@ -3,6 +3,7 @@ package com.example.kitrinostheos
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
@@ -35,7 +36,7 @@ class Section1Fragment : Fragment(), WebViewReloadable {
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
         webSettings.loadsImagesAutomatically = true
 
         // Σταθερό Scale για πρακτικότητα
@@ -47,6 +48,22 @@ class Section1Fragment : Fragment(), WebViewReloadable {
         webSettings.loadWithOverviewMode = true
 
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+
+        // 1. Ενεργοποιεί το swipe μόνο αν το WebView είναι στο πάνω μέρος
+        webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
+            swipeRefreshLayout.isEnabled = scrollY == 0
+        }
+
+        // 2. Περιορίζει το swipe μόνο στο πάνω 35% της οθόνης
+        swipeRefreshLayout.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                val y = event.rawY
+                val screenHeight = resources.displayMetrics.heightPixels
+                // Ελέγχει αν το WebView είναι στο 0 και το δάκτυλο είναι ψηλά
+                swipeRefreshLayout.isEnabled = webView.scrollY == 0 && y < screenHeight * 0.35f
+            }
+            false
+        }
 
         webView.webViewClient = object : WebViewClient() {
 
