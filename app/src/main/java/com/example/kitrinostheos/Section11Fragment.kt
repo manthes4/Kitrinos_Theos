@@ -41,7 +41,7 @@ class Section11Fragment : Fragment(), WebViewReloadable {
         val webSettings: WebSettings = webView.settings
         webSettings.javaScriptEnabled = true
         webSettings.domStorageEnabled = true
-        webSettings.cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
+        webSettings.cacheMode = WebSettings.LOAD_DEFAULT
         webSettings.loadsImagesAutomatically = true
 
         // Απενεργοποιημένο για να μην ξεχειλώνει
